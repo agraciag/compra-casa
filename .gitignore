@@ -1,0 +1,86 @@
+# Virtual environment
+venv/
+env/
+ENV/
+
+# Database (uncomment if you don't want to track the database)
+# data/properties.db
+
+# Logs
+logs/
+*.log
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE specific
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Environment variables
+.env
+.env.local
+.env.dev
+
+# Compiled files
+*.class
+*.o
+*.a
+*.la
+*.lo
+
+# Coverage reports
+.coverage
+coverage/
+htmlcov/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Data files (except for raw data that should be tracked)
+data/processed/
+data/raw/*.csv
+data/raw/*.json
+data/raw/*.xlsx
+
+# System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
