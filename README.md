@@ -14,29 +14,38 @@ The system collects housing data from various sources (Idealista, Fotocasa, etc.
 - **Price Analysis**: Price per square meter calculations and market comparisons
 - **Quality Metrics**: Standardized metrics for comparing properties
 - **Duplicate Detection**: Identifies the same property listed on multiple portals
+- **Web Interface**: Modern web-based dashboard for property browsing and analysis
+- **Containerized Deployment**: Docker support for easy deployment
 
 ## Project Structure
 
 ```
 compra-casa/
+├── app.py                # Flask web application
+├── templates/            # HTML templates for web interface
+│   └── index.html
 ├── data/
-│   ├── raw/          # Raw scraped data
-│   └── processed/    # Cleaned and processed data
+│   ├── raw/              # Raw scraped data
+│   └── processed/        # Cleaned and processed data
 ├── src/
-│   ├── scraper/      # Web scraping modules
-│   ├── analysis/     # Data analysis modules
-│   ├── visualization/ # Data visualization modules
-│   └── utils/        # Utility functions
-├── docs/             # Documentation
-├── config/           # Configuration files
-├── logs/             # Log files
-├── venv/             # Virtual environment
-├── requirements.txt  # Python dependencies
+│   ├── scraper/          # Web scraping modules
+│   ├── analysis/         # Data analysis modules
+│   ├── visualization/    # Data visualization modules
+│   └── utils/            # Utility functions
+├── docs/                 # Documentation
+├── config/               # Configuration files
+├── logs/                 # Log files
+├── venv/                 # Virtual environment
+├── Dockerfile            # Docker configuration
+├── docker-compose.yml    # Docker Compose configuration
+├── start_web.sh          # Web application startup script
+├── requirements.txt      # Python dependencies
 └── README.md
 ```
 
 ## Setup
 
+### Option 1: Local Development
 1. Clone the repository
 2. Create a virtual environment:
    ```bash
@@ -48,7 +57,25 @@ compra-casa/
    pip install -r requirements.txt
    ```
 
+### Option 2: Docker Container
+1. Build and run with Docker Compose:
+   ```bash
+   docker-compose up --build
+   ```
+
 ## Usage
+
+### Web Interface (Recommended)
+Start the web application:
+```bash
+# Local
+./start_web.sh
+
+# Or with Docker
+docker-compose up --build
+```
+
+Access the dashboard at `http://localhost:5000`
 
 ### Quick Demo
 Run the demo to verify the system is working:
@@ -70,6 +97,14 @@ Adjust scraping parameters in `config/settings.py`:
 - Source-specific configurations
 - Geographic filters for Zaragoza
 - Property filters and validation thresholds
+
+## Web Interface Features
+
+- **Interactive Dashboard**: Browse properties with filtering and search
+- **Statistics Panel**: View market statistics and trends
+- **Visual Charts**: District distribution and price range visualizations
+- **Property Cards**: Detailed property information with features
+- **Real-time Updates**: Refresh data without page reload
 
 ## Data Model
 
@@ -101,8 +136,8 @@ The system implements respectful scraping practices:
 1. Begin collecting data from real sources
 2. Implement additional source parsers as needed
 3. Set up periodic runs using a scheduler
-4. Develop visualization dashboards
-5. Create property comparison tools
+4. Enhance visualization dashboards
+5. Create advanced property comparison tools
 6. Add market trend analysis features
 
 ## Legal Notice
