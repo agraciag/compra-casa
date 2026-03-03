@@ -56,7 +56,8 @@ class PropertyDatabase:
                 has_garden BOOLEAN,
                 has_pool BOOLEAN,
                 energy_certificate_rating TEXT,       -- Energy efficiency rating
-                
+                property_condition TEXT,              -- obra_nueva, segunda_mano, en_construccion
+
                 -- Status and metadata
                 is_active BOOLEAN DEFAULT TRUE,       -- Is the listing still active?
                 first_seen_date DATE,
@@ -130,7 +131,8 @@ class PropertyDatabase:
             "CREATE INDEX IF NOT EXISTS idx_properties_is_active ON properties(is_active)",
             "CREATE INDEX IF NOT EXISTS idx_properties_source ON properties(source)",
             "CREATE INDEX IF NOT EXISTS idx_properties_location_price ON properties(city, district, price)",
-            "CREATE INDEX IF NOT EXISTS idx_properties_type_price ON properties(property_type, price)"
+            "CREATE INDEX IF NOT EXISTS idx_properties_type_price ON properties(property_type, price)",
+            "CREATE INDEX IF NOT EXISTS idx_properties_condition ON properties(property_condition)"
         ]
         
         for index_sql in indexes:
@@ -145,21 +147,21 @@ class PropertyDatabase:
         # Prepare the SQL statement
         sql = '''
             INSERT OR REPLACE INTO properties (
-                external_id, source, url, title, description, address, city, district, 
-                postal_code, latitude, longitude, property_type, price, currency, 
-                surface_area, rooms, bedrooms, bathrooms, floor_number, total_floors, 
-                construction_year, has_elevator, has_parking, parking_price, 
-                has_terrace, has_balcony, has_garden, has_pool, 
-                energy_certificate_rating, is_active, first_seen_date, last_seen_date, 
-                scraped_at
+                external_id, source, url, title, description, address, city, district,
+                postal_code, latitude, longitude, property_type, price, currency,
+                surface_area, rooms, bedrooms, bathrooms, floor_number, total_floors,
+                construction_year, has_elevator, has_parking, parking_price,
+                has_terrace, has_balcony, has_garden, has_pool,
+                energy_certificate_rating, property_condition,
+                is_active, first_seen_date, last_seen_date, scraped_at
             ) VALUES (
-                :external_id, :source, :url, :title, :description, :address, :city, :district, 
-                :postal_code, :latitude, :longitude, :property_type, :price, :currency, 
-                :surface_area, :rooms, :bedrooms, :bathrooms, :floor_number, :total_floors, 
-                :construction_year, :has_elevator, :has_parking, :parking_price, 
-                :has_terrace, :has_balcony, :has_garden, :has_pool, 
-                :energy_certificate_rating, :is_active, :first_seen_date, :last_seen_date, 
-                :scraped_at
+                :external_id, :source, :url, :title, :description, :address, :city, :district,
+                :postal_code, :latitude, :longitude, :property_type, :price, :currency,
+                :surface_area, :rooms, :bedrooms, :bathrooms, :floor_number, :total_floors,
+                :construction_year, :has_elevator, :has_parking, :parking_price,
+                :has_terrace, :has_balcony, :has_garden, :has_pool,
+                :energy_certificate_rating, :property_condition,
+                :is_active, :first_seen_date, :last_seen_date, :scraped_at
             )
         '''
         
@@ -217,6 +219,25 @@ class PropertyDatabase:
         
         return []
     
+    def get_duplicate_stats(self):
+        """Get statistics about properties in the database."""
+        cursor = self.conn.cursor()
+
+        cursor.execute("SELECT COUNT(*) FROM properties WHERE is_active = 1")
+        active_count = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM properties WHERE is_active = 0")
+        inactive_count = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM properties")
+        total_count = cursor.fetchone()[0]
+
+        return {
+            'total_properties': total_count,
+            'active_properties': active_count,
+            'inactive_properties': inactive_count
+        }
+
     def close(self):
         """Close the database connection."""
         if self.conn:

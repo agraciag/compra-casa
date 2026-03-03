@@ -210,6 +210,7 @@ class PropertyDeduplicator:
                 has_garden = COALESCE(?, has_garden),
                 has_pool = COALESCE(?, has_pool),
                 energy_certificate_rating = COALESCE(?, energy_certificate_rating),
+                property_condition = COALESCE(?, property_condition),
                 is_active = 1,
                 last_seen_date = ?,
                 updated_at = CURRENT_TIMESTAMP
@@ -229,6 +230,7 @@ class PropertyDeduplicator:
             updated_property.has_garden,
             updated_property.has_pool,
             updated_property.energy_certificate_rating,
+            updated_property.property_condition,
             updated_property.last_seen_date,
             existing_id
         ))
@@ -277,6 +279,7 @@ class PropertyDeduplicator:
             has_garden=new_data.has_garden if new_data.has_garden is not None else existing.has_garden,
             has_pool=new_data.has_pool if new_data.has_pool is not None else existing.has_pool,
             energy_certificate_rating=new_data.energy_certificate_rating or existing.energy_certificate_rating,
+            property_condition=new_data.property_condition or existing.property_condition,
             is_active=True,  # Always set to active when updating
             first_seen_date=existing.first_seen_date,
             last_seen_date=new_data.last_seen_date,

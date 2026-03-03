@@ -88,13 +88,42 @@ LOCATION_FILTERS = {
     ]
 }
 
-# Property filters
+# Property filters (general validation)
 PROPERTY_FILTERS = {
-    'min_price': 30000,                     # Minimum property price
-    'max_price': 500000,                    # Maximum property price
-    'min_surface_area': 30,                 # Minimum surface area in sqm
-    'max_surface_area': 300,                # Maximum surface area in sqm
-    'property_types': ['apartment', 'flat', 'piso', 'house', 'chalet', 'ático', 'duplex'],
+    'min_price': 30000,
+    'max_price': 500000,
+    'min_surface_area': 30,
+    'max_surface_area': 300,
+    'property_types': ['apartment', 'flat', 'piso', 'house', 'chalet', 'atico', 'duplex'],
+}
+
+# Active search scope — these filters are applied AT THE URL LEVEL so portals
+# only return in-scope results. Change these to adjust what gets scraped.
+SEARCH_SCOPE = {
+    'min_price': 150000,
+    'max_price': 250000,
+    'min_bedrooms': 3,
+    'min_bathrooms': 2,
+    'has_parking': True,
+    'sources': ['idealista', 'fotocasa'],   # Portals to scrape
+    'max_pages': 2,                         # Pages per portal (keep low for testing)
+}
+
+# Pre-filtered search URLs per portal.
+# Each portal encodes filters differently in the URL.
+FILTERED_SEARCH_URLS = {
+    # Idealista uses path-based filters:
+    # /venta-viviendas/zaragoza/zaragoza/con-precio-desde_X,precio-hasta_Y,de-tres-dormitorios,...
+    'idealista': (
+        'https://www.idealista.com/venta-viviendas/zaragoza/zaragoza/'
+        'con-precio-desde_150000,precio-hasta_250000,'
+        'de-tres-dormitorios,dos-banos,garaje/'
+    ),
+    # Fotocasa uses query parameters:
+    'fotocasa': (
+        'https://www.fotocasa.es/es/comprar/viviendas/zaragoza-capital/todas-las-zonas/l'
+        '?minPrice=150000&maxPrice=250000&minRooms=3&minBathrooms=2&isGarage=true'
+    ),
 }
 
 # Data validation thresholds

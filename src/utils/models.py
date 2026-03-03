@@ -46,7 +46,8 @@ class PropertyModel:
     has_garden: Optional[bool] = None
     has_pool: Optional[bool] = None
     energy_certificate_rating: Optional[str] = None
-    
+    property_condition: Optional[str] = None  # obra_nueva, segunda_mano, en_construccion
+
     # Status and Metadata
     is_active: bool = True
     first_seen_date: Optional[str] = None
@@ -251,23 +252,3 @@ def validate_property_data(property_data: Dict[str, Any]) -> bool:
     return True
 
 
-def normalize_property_address(address: str) -> str:
-    """
-    Normalize property address for better matching
-    """
-    if not address:
-        return ""
-    
-    # Convert to lowercase and strip whitespace
-    normalized = address.lower().strip()
-    
-    # Remove common prefixes/suffixes that don't affect location
-    prefixes = ['calle ', 'avenida ', 'plaza ', 'paseo ', 'c/', 'avda ', 'pg ']
-    for prefix in prefixes:
-        if normalized.startswith(prefix):
-            normalized = normalized[len(prefix):].strip()
-    
-    # Remove extra whitespace
-    normalized = ' '.join(normalized.split())
-    
-    return normalized

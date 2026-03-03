@@ -3,13 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CasaCompra - Análisis de Propiedades en Zaragoza</title>
+    <title>CasaCompra - Analisis de Propiedades en Zaragoza</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        body {
-            background-color: #f8f9fa;
-        }
+        body { background-color: #f8f9fa; }
         .header-bg {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -30,6 +28,7 @@
             align-items: center;
             justify-content: center;
             color: #6c757d;
+            position: relative;
         }
         .price-tag {
             position: absolute;
@@ -41,6 +40,19 @@
             border-radius: 5px;
             font-weight: bold;
         }
+        .condition-tag {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 4px 8px;
+            border-radius: 5px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            color: white;
+        }
+        .condition-tag.obra-nueva { background: #198754; }
+        .condition-tag.en-construccion { background: #fd7e14; }
+        .condition-tag.segunda-mano { background: #6c757d; }
         .feature-badge {
             background-color: #e9ecef;
             color: #495057;
@@ -51,15 +63,41 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
         }
-        .loading {
-            display: none;
-        }
+        .loading { display: none; }
         .chart-container {
             background: white;
             padding: 20px;
             border-radius: 10px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
+        .filter-section { background: white; border-radius: 10px; }
+        .feature-check { cursor: pointer; }
+        .feature-check input:checked + label { color: #667eea; font-weight: 600; }
+        .result-count { font-size: 0.9rem; color: #6c757d; }
+        /* Opportunity badges */
+        .opp-badge {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            padding: 4px 10px;
+            border-radius: 5px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            color: white;
+        }
+        .opp-badge.oportunidad { background: #198754; }
+        .opp-badge.buen_precio { background: #20c997; }
+        .opp-badge.precio_justo { background: #0dcaf0; color: #333; }
+        .opp-badge.algo_caro { background: #ffc107; color: #333; }
+        .opp-badge.caro { background: #dc3545; }
+        .opp-diff { font-size: 0.8rem; }
+        .opp-diff.positive { color: #198754; font-weight: 600; }
+        .opp-diff.negative { color: #dc3545; }
+        /* Card actions */
+        .card-actions { position: absolute; top: 10px; right: 10px; z-index: 2; }
+        .card-actions .btn { padding: 2px 6px; font-size: 0.75rem; opacity: 0.7; }
+        .card-actions .btn:hover { opacity: 1; }
+        .property-card:hover .card-actions { opacity: 1; }
     </style>
 </head>
 <body>
@@ -67,13 +105,16 @@
     <header class="header-bg py-4">
         <div class="container">
             <div class="row align-items-center">
-                <div class="col-md-8">
+                <div class="col-md-6">
                     <h1><i class="fas fa-home"></i> CasaCompra</h1>
-                    <p class="mb-0">Análisis de Propiedades en Zaragoza</p>
+                    <p class="mb-0">Analisis de Propiedades en Zaragoza</p>
                 </div>
-                <div class="col-md-4 text-end">
-                    <button class="btn btn-light" onclick="loadProperties()">
-                        <i class="fas fa-sync-alt"></i> Actualizar Datos
+                <div class="col-md-6 text-end">
+                    <button class="btn btn-success me-2" data-bs-toggle="modal" data-bs-target="#addPropertyModal">
+                        <i class="fas fa-plus"></i> Anadir Propiedad
+                    </button>
+                    <button class="btn btn-light" onclick="refreshAll()">
+                        <i class="fas fa-sync-alt"></i> Actualizar
                     </button>
                 </div>
             </div>
@@ -81,39 +122,112 @@
     </header>
 
     <div class="container mt-4">
-        <!-- Search and Filters -->
-        <div class="row mb-4">
-            <div class="col-md-12">
-                <div class="card">
-                    <div class="card-body">
-                        <div class="row g-3">
-                            <div class="col-md-4">
-                                <input type="text" class="form-control" id="searchInput" placeholder="Buscar por título, dirección o distrito...">
+        <!-- Filters -->
+        <div class="card filter-section mb-4">
+            <div class="card-body">
+                <!-- Row 1: Search + District + Condition -->
+                <div class="row g-2 mb-2">
+                    <div class="col-md-4">
+                        <label class="form-label small text-muted mb-1">Buscar</label>
+                        <input type="text" class="form-control" id="searchInput"
+                               placeholder="Titulo, direccion, distrito...">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted mb-1">Distrito</label>
+                        <select class="form-select" id="districtFilter">
+                            <option value="">Todos</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small text-muted mb-1">Condicion</label>
+                        <select class="form-select" id="conditionFilter">
+                            <option value="">Todas</option>
+                            <option value="obra_nueva">Obra nueva</option>
+                            <option value="en_construccion">En construccion</option>
+                            <option value="segunda_mano">Segunda mano</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted mb-1">Tipo</label>
+                        <select class="form-select" id="propertyTypeFilter">
+                            <option value="">Todos</option>
+                            <option value="apartment">Piso</option>
+                            <option value="flat">Flat</option>
+                            <option value="house">Casa</option>
+                            <option value="chalet">Chalet</option>
+                            <option value="duplex">Duplex</option>
+                            <option value="atico">Atico</option>
+                            <option value="studio">Estudio</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Row 2: Price + Surface + Bedrooms -->
+                <div class="row g-2 mb-2">
+                    <div class="col-md-2">
+                        <label class="form-label small text-muted mb-1">Precio min</label>
+                        <input type="number" class="form-control" id="minPrice" placeholder="0">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small text-muted mb-1">Precio max</label>
+                        <input type="number" class="form-control" id="maxPrice" placeholder="500000">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small text-muted mb-1">Superficie min (m2)</label>
+                        <input type="number" class="form-control" id="minSurface" placeholder="0">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small text-muted mb-1">Superficie max (m2)</label>
+                        <input type="number" class="form-control" id="maxSurface" placeholder="300">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small text-muted mb-1">Habitaciones</label>
+                        <input type="number" class="form-control" id="bedrooms" placeholder="Todas" min="0">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small text-muted mb-1">Banos</label>
+                        <input type="number" class="form-control" id="bathrooms" placeholder="Todos" min="0">
+                    </div>
+                </div>
+
+                <!-- Row 3: Features checkboxes + buttons -->
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-8">
+                        <label class="form-label small text-muted mb-1">Caracteristicas</label>
+                        <div class="d-flex flex-wrap gap-3">
+                            <div class="form-check feature-check">
+                                <input class="form-check-input" type="checkbox" id="feat_elevator">
+                                <label class="form-check-label" for="feat_elevator"><i class="fas fa-elevator"></i> Ascensor</label>
                             </div>
-                            <div class="col-md-2">
-                                <select class="form-select" id="districtFilter">
-                                    <option value="">Todos los distritos</option>
-                                    <!-- Options will be populated dynamically -->
-                                </select>
+                            <div class="form-check feature-check">
+                                <input class="form-check-input" type="checkbox" id="feat_parking">
+                                <label class="form-check-label" for="feat_parking"><i class="fas fa-car"></i> Parking</label>
                             </div>
-                            <div class="col-md-2">
-                                <input type="number" class="form-control" id="minPrice" placeholder="Precio mínimo">
+                            <div class="form-check feature-check">
+                                <input class="form-check-input" type="checkbox" id="feat_terrace">
+                                <label class="form-check-label" for="feat_terrace"><i class="fas fa-wind"></i> Terraza</label>
                             </div>
-                            <div class="col-md-2">
-                                <input type="number" class="form-control" id="maxPrice" placeholder="Precio máximo">
+                            <div class="form-check feature-check">
+                                <input class="form-check-input" type="checkbox" id="feat_balcony">
+                                <label class="form-check-label" for="feat_balcony"><i class="fas fa-archway"></i> Balcon</label>
                             </div>
-                            <div class="col-md-2">
-                                <input type="number" class="form-control" id="bedrooms" placeholder="Habitaciones">
+                            <div class="form-check feature-check">
+                                <input class="form-check-input" type="checkbox" id="feat_garden">
+                                <label class="form-check-label" for="feat_garden"><i class="fas fa-seedling"></i> Jardin</label>
+                            </div>
+                            <div class="form-check feature-check">
+                                <input class="form-check-input" type="checkbox" id="feat_pool">
+                                <label class="form-check-label" for="feat_pool"><i class="fas fa-water"></i> Piscina</label>
                             </div>
                         </div>
-                        <div class="mt-3">
-                            <button class="btn btn-primary" onclick="applyFilters()">
-                                <i class="fas fa-filter"></i> Filtrar
-                            </button>
-                            <button class="btn btn-secondary" onclick="clearFilters()">
-                                <i class="fas fa-times"></i> Limpiar
-                            </button>
-                        </div>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <button class="btn btn-primary" onclick="applyFilters()">
+                            <i class="fas fa-filter"></i> Filtrar
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="clearFilters()">
+                            <i class="fas fa-times"></i> Limpiar
+                        </button>
                     </div>
                 </div>
             </div>
@@ -121,35 +235,35 @@
 
         <!-- Stats Cards -->
         <div class="row mb-4">
-            <div class="col-md-3">
+            <div class="col-6 col-md-3 mb-2">
                 <div class="card stats-card text-center">
-                    <div class="card-body">
+                    <div class="card-body py-3">
                         <h3 id="totalProperties">0</h3>
-                        <p class="mb-0">Propiedades</p>
+                        <p class="mb-0 small">Propiedades</p>
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-6 col-md-3 mb-2">
                 <div class="card stats-card text-center">
-                    <div class="card-body">
-                        <h3 id="avgPrice">€0</h3>
-                        <p class="mb-0">Precio Medio</p>
+                    <div class="card-body py-3">
+                        <h3 id="avgPrice">0</h3>
+                        <p class="mb-0 small">Precio Medio</p>
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-6 col-md-3 mb-2">
                 <div class="card stats-card text-center">
-                    <div class="card-body">
-                        <h3 id="avgPricePerSqm">€0</h3>
-                        <p class="mb-0">€/m² Medio</p>
+                    <div class="card-body py-3">
+                        <h3 id="avgPricePerSqm">0</h3>
+                        <p class="mb-0 small">EUR/m2 Medio</p>
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-6 col-md-3 mb-2">
                 <div class="card stats-card text-center">
-                    <div class="card-body">
+                    <div class="card-body py-3">
                         <h3 id="activeSources">0</h3>
-                        <p class="mb-0">Fuentes Activas</p>
+                        <p class="mb-0 small">Fuentes</p>
                     </div>
                 </div>
             </div>
@@ -157,13 +271,13 @@
 
         <!-- Charts Row -->
         <div class="row mb-4">
-            <div class="col-md-6">
+            <div class="col-md-6 mb-3">
                 <div class="chart-container">
-                    <h5>Distribución por Distrito</h5>
+                    <h5>Distribucion por Distrito</h5>
                     <canvas id="districtChart"></canvas>
                 </div>
             </div>
-            <div class="col-md-6">
+            <div class="col-md-6 mb-3">
                 <div class="chart-container">
                     <h5>Rangos de Precio</h5>
                     <canvas id="priceChart"></canvas>
@@ -179,63 +293,380 @@
             <p class="mt-2">Cargando propiedades...</p>
         </div>
 
+        <!-- Result count -->
+        <div class="mb-3 result-count" id="resultCount"></div>
+
         <!-- Properties Grid -->
-        <div class="row" id="propertiesGrid">
-            <!-- Properties will be loaded here -->
+        <div class="row" id="propertiesGrid"></div>
+    </div>
+
+    <!-- Add Property Modal -->
+    <div class="modal fade" id="addPropertyModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title"><i class="fas fa-plus-circle"></i> Anadir Propiedad</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addPropertyForm">
+                        <!-- Row 1: Title + URL -->
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Titulo *</label>
+                                <input type="text" class="form-control" id="f_title" required
+                                       placeholder="Piso 3 hab en Delicias">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">URL del anuncio</label>
+                                <input type="url" class="form-control" id="f_url"
+                                       placeholder="https://idealista.com/inmueble/...">
+                            </div>
+                        </div>
+                        <!-- Row 2: Price + Surface + Source -->
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-3">
+                                <label class="form-label">Precio (EUR) *</label>
+                                <input type="number" class="form-control" id="f_price" required min="1"
+                                       placeholder="195000">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Superficie (m2)</label>
+                                <input type="number" class="form-control" id="f_surface" min="1"
+                                       placeholder="85">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Fuente</label>
+                                <select class="form-select" id="f_source">
+                                    <option value="manual">Manual</option>
+                                    <option value="idealista">Idealista</option>
+                                    <option value="fotocasa">Fotocasa</option>
+                                    <option value="habitaclia">Habitaclia</option>
+                                    <option value="pisos.com">Pisos.com</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Codigo postal</label>
+                                <input type="text" class="form-control" id="f_postal" maxlength="5"
+                                       placeholder="50017">
+                            </div>
+                        </div>
+                        <!-- Row 3: Bedrooms + Bathrooms + Rooms + Floor -->
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-3">
+                                <label class="form-label">Habitaciones</label>
+                                <input type="number" class="form-control" id="f_bedrooms" min="0"
+                                       placeholder="3">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Banos</label>
+                                <input type="number" class="form-control" id="f_bathrooms" min="0"
+                                       placeholder="2">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Estancias totales</label>
+                                <input type="number" class="form-control" id="f_rooms" min="0"
+                                       placeholder="4">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Planta</label>
+                                <input type="number" class="form-control" id="f_floor" min="0"
+                                       placeholder="3">
+                            </div>
+                        </div>
+                        <!-- Row 4: District + Address + Type + Condition -->
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-3">
+                                <label class="form-label">Distrito</label>
+                                <input type="text" class="form-control" id="f_district" list="districtList"
+                                       placeholder="Delicias">
+                                <datalist id="districtList"></datalist>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Direccion</label>
+                                <input type="text" class="form-control" id="f_address"
+                                       placeholder="Calle ejemplo, 10">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Tipo</label>
+                                <select class="form-select" id="f_type">
+                                    <option value="apartment">Piso</option>
+                                    <option value="duplex">Duplex</option>
+                                    <option value="atico">Atico</option>
+                                    <option value="chalet">Chalet</option>
+                                    <option value="house">Casa</option>
+                                    <option value="studio">Estudio</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Condicion</label>
+                                <select class="form-select" id="f_condition">
+                                    <option value="">-- Seleccionar --</option>
+                                    <option value="obra_nueva">Obra nueva</option>
+                                    <option value="en_construccion">En construccion</option>
+                                    <option value="segunda_mano">Segunda mano</option>
+                                </select>
+                            </div>
+                        </div>
+                        <!-- Row 5: Construction year + Energy + Description -->
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-3">
+                                <label class="form-label">Ano construccion</label>
+                                <input type="number" class="form-control" id="f_year" min="1900" max="2035"
+                                       placeholder="2025">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Certificado energia</label>
+                                <select class="form-select" id="f_energy">
+                                    <option value="">--</option>
+                                    <option value="A">A</option>
+                                    <option value="B">B</option>
+                                    <option value="C">C</option>
+                                    <option value="D">D</option>
+                                    <option value="E">E</option>
+                                    <option value="F">F</option>
+                                    <option value="G">G</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Descripcion</label>
+                                <input type="text" class="form-control" id="f_description"
+                                       placeholder="Notas sobre la propiedad...">
+                            </div>
+                        </div>
+                        <!-- Row 6: Features checkboxes -->
+                        <div class="mb-3">
+                            <label class="form-label">Caracteristicas</label>
+                            <div class="d-flex flex-wrap gap-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="f_elevator">
+                                    <label class="form-check-label" for="f_elevator">Ascensor</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="f_parking">
+                                    <label class="form-check-label" for="f_parking">Parking</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="f_terrace">
+                                    <label class="form-check-label" for="f_terrace">Terraza</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="f_balcony">
+                                    <label class="form-check-label" for="f_balcony">Balcon</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="f_garden">
+                                    <label class="form-check-label" for="f_garden">Jardin</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="f_pool">
+                                    <label class="form-check-label" for="f_pool">Piscina</label>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="formAlert" class="alert d-none"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-success" onclick="submitProperty()">
+                        <i class="fas fa-save"></i> Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Property Modal -->
+    <div class="modal fade" id="editPropertyModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="fas fa-edit"></i> Editar Propiedad</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editPropertyForm">
+                        <input type="hidden" id="e_id">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Titulo *</label>
+                                <input type="text" class="form-control" id="e_title" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">URL</label>
+                                <input type="url" class="form-control" id="e_url">
+                            </div>
+                        </div>
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-3">
+                                <label class="form-label">Precio (EUR) *</label>
+                                <input type="number" class="form-control" id="e_price" required min="1">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Superficie (m2)</label>
+                                <input type="number" class="form-control" id="e_surface" min="1">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Fuente</label>
+                                <select class="form-select" id="e_source">
+                                    <option value="manual">Manual</option>
+                                    <option value="idealista">Idealista</option>
+                                    <option value="fotocasa">Fotocasa</option>
+                                    <option value="habitaclia">Habitaclia</option>
+                                    <option value="pisos.com">Pisos.com</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Codigo postal</label>
+                                <input type="text" class="form-control" id="e_postal" maxlength="5">
+                            </div>
+                        </div>
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-3">
+                                <label class="form-label">Habitaciones</label>
+                                <input type="number" class="form-control" id="e_bedrooms" min="0">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Banos</label>
+                                <input type="number" class="form-control" id="e_bathrooms" min="0">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Distrito</label>
+                                <input type="text" class="form-control" id="e_district" list="districtList">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Direccion</label>
+                                <input type="text" class="form-control" id="e_address">
+                            </div>
+                        </div>
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-3">
+                                <label class="form-label">Tipo</label>
+                                <select class="form-select" id="e_type">
+                                    <option value="apartment">Piso</option>
+                                    <option value="duplex">Duplex</option>
+                                    <option value="atico">Atico</option>
+                                    <option value="chalet">Chalet</option>
+                                    <option value="house">Casa</option>
+                                    <option value="studio">Estudio</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Condicion</label>
+                                <select class="form-select" id="e_condition">
+                                    <option value="">--</option>
+                                    <option value="obra_nueva">Obra nueva</option>
+                                    <option value="en_construccion">En construccion</option>
+                                    <option value="segunda_mano">Segunda mano</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Ano construccion</label>
+                                <input type="number" class="form-control" id="e_year" min="1900" max="2035">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Certificado energia</label>
+                                <select class="form-select" id="e_energy">
+                                    <option value="">--</option>
+                                    <option value="A">A</option><option value="B">B</option>
+                                    <option value="C">C</option><option value="D">D</option>
+                                    <option value="E">E</option><option value="F">F</option>
+                                    <option value="G">G</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Descripcion</label>
+                            <input type="text" class="form-control" id="e_description">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Caracteristicas</label>
+                            <div class="d-flex flex-wrap gap-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="e_elevator">
+                                    <label class="form-check-label" for="e_elevator">Ascensor</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="e_parking">
+                                    <label class="form-check-label" for="e_parking">Parking</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="e_terrace">
+                                    <label class="form-check-label" for="e_terrace">Terraza</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="e_balcony">
+                                    <label class="form-check-label" for="e_balcony">Balcon</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="e_garden">
+                                    <label class="form-check-label" for="e_garden">Jardin</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="e_pool">
+                                    <label class="form-check-label" for="e_pool">Piscina</label>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="editFormAlert" class="alert d-none"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="updateProperty()">
+                        <i class="fas fa-save"></i> Guardar cambios
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
     <!-- Footer -->
     <footer class="bg-dark text-white text-center py-3 mt-5">
         <div class="container">
-            <p class="mb-0">&copy; 2026 CasaCompra - Análisis de Propiedades en Zaragoza</p>
+            <p class="mb-0">CasaCompra - Analisis de Propiedades en Zaragoza</p>
         </div>
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
-        // Global variables
         let allProperties = [];
-        let statsData = {};
         let districtChart = null;
         let priceChart = null;
 
-        // DOM elements
         const propertiesGrid = document.getElementById('propertiesGrid');
         const loadingIndicator = document.getElementById('loadingIndicator');
-        const searchInput = document.getElementById('searchInput');
-        const districtFilter = document.getElementById('districtFilter');
+        const resultCount = document.getElementById('resultCount');
 
-        // Initialize the app
         document.addEventListener('DOMContentLoaded', function() {
             loadStats();
             loadProperties();
-            
-            // Add event listeners for filters
-            document.getElementById('searchInput').addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
-                    applyFilters();
-                }
-            });
+
+            document.querySelectorAll('#searchInput, #minPrice, #maxPrice, #minSurface, #maxSurface, #bedrooms, #bathrooms')
+                .forEach(el => el.addEventListener('keypress', e => { if (e.key === 'Enter') applyFilters(); }));
+
+            document.querySelectorAll('#districtFilter, #conditionFilter, #propertyTypeFilter')
+                .forEach(el => el.addEventListener('change', applyFilters));
+
+            document.querySelectorAll('.feature-check input')
+                .forEach(el => el.addEventListener('change', applyFilters));
         });
 
-        // Load statistics
+        // ====== STATS ======
         async function loadStats() {
             try {
                 const response = await fetch('/api/stats');
                 const stats = await response.json();
-                statsData = stats;
-                
+
                 document.getElementById('totalProperties').textContent = stats.total_properties;
-                document.getElementById('avgPrice').textContent = '€' + Math.round(stats.avg_price).toLocaleString();
-                document.getElementById('avgPricePerSqm').textContent = '€' + Math.round(stats.avg_price_per_sqm).toLocaleString();
-                document.getElementById('activeSources').textContent = '3'; // Assuming 3 sources
-                
-                // Populate district filter
+                document.getElementById('avgPrice').textContent = formatCurrency(stats.avg_price);
+                document.getElementById('avgPricePerSqm').textContent = formatCurrency(stats.avg_price_per_sqm);
+                document.getElementById('activeSources').textContent = stats.district_counts.length;
+
                 populateDistrictFilter(stats.district_counts);
-                
-                // Draw charts
+                populateDistrictDatalist(stats.district_counts);
                 drawDistrictChart(stats.district_counts);
                 drawPriceChart(stats.price_ranges);
             } catch (error) {
@@ -243,32 +674,37 @@
             }
         }
 
-        // Populate district filter dropdown
         function populateDistrictFilter(districtCounts) {
-            districtFilter.innerHTML = '<option value="">Todos los distritos</option>';
-            districtCounts.forEach(district => {
-                const option = document.createElement('option');
-                option.value = district.district;
-                option.textContent = district.district;
-                districtFilter.appendChild(option);
+            const select = document.getElementById('districtFilter');
+            select.innerHTML = '<option value="">Todos</option>';
+            districtCounts.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d.district;
+                opt.textContent = `${d.district} (${d.count})`;
+                select.appendChild(opt);
             });
         }
 
-        // Draw district chart
-        function drawDistrictChart(districtData) {
+        function populateDistrictDatalist(districtCounts) {
+            const dl = document.getElementById('districtList');
+            dl.innerHTML = '';
+            districtCounts.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d.district;
+                dl.appendChild(opt);
+            });
+        }
+
+        function drawDistrictChart(data) {
             const ctx = document.getElementById('districtChart').getContext('2d');
-            
-            if (districtChart) {
-                districtChart.destroy();
-            }
-            
+            if (districtChart) districtChart.destroy();
             districtChart = new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: districtData.map(d => d.district),
+                    labels: data.map(d => d.district),
                     datasets: [{
-                        label: 'Número de Propiedades',
-                        data: districtData.map(d => d.count),
+                        label: 'Propiedades',
+                        data: data.map(d => d.count),
                         backgroundColor: 'rgba(102, 126, 234, 0.6)',
                         borderColor: 'rgba(102, 126, 234, 1)',
                         borderWidth: 1
@@ -276,202 +712,394 @@
                 },
                 options: {
                     responsive: true,
-                    plugins: {
-                        legend: {
-                            display: false
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true
-                        }
-                    }
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true } }
                 }
             });
         }
 
-        // Draw price chart
-        function drawPriceChart(priceData) {
+        function drawPriceChart(data) {
             const ctx = document.getElementById('priceChart').getContext('2d');
-            
-            if (priceChart) {
-                priceChart.destroy();
-            }
-            
+            if (priceChart) priceChart.destroy();
             priceChart = new Chart(ctx, {
                 type: 'doughnut',
                 data: {
-                    labels: priceData.map(p => p.range),
+                    labels: data.map(p => p.range),
                     datasets: [{
-                        data: priceData.map(p => p.count),
-                        backgroundColor: [
-                            '#FF6384',
-                            '#36A2EB',
-                            '#FFCE56',
-                            '#4BC0C0',
-                            '#9966FF'
-                        ],
+                        data: data.map(p => p.count),
+                        backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF'],
                         borderWidth: 1
                     }]
                 },
                 options: {
                     responsive: true,
-                    plugins: {
-                        legend: {
-                            position: 'bottom'
-                        }
-                    }
+                    plugins: { legend: { position: 'bottom' } }
                 }
             });
         }
 
-        // Load properties
+        // ====== PROPERTIES ======
         async function loadProperties() {
             showLoading(true);
-            
             try {
                 const response = await fetch('/api/properties');
                 allProperties = await response.json();
                 renderProperties(allProperties);
             } catch (error) {
                 console.error('Error loading properties:', error);
-                propertiesGrid.innerHTML = '<div class="col-12"><div class="alert alert-danger">Error al cargar las propiedades</div></div>';
+                propertiesGrid.innerHTML = '<div class="col-12"><div class="alert alert-danger">Error al cargar propiedades</div></div>';
             } finally {
                 showLoading(false);
             }
         }
 
-        // Render properties grid
         function renderProperties(properties) {
+            resultCount.textContent = `${properties.length} propiedad${properties.length !== 1 ? 'es' : ''} encontrada${properties.length !== 1 ? 's' : ''}`;
+
             if (!properties || properties.length === 0) {
-                propertiesGrid.innerHTML = '<div class="col-12"><div class="alert alert-info">No se encontraron propiedades</div></div>';
+                propertiesGrid.innerHTML = '<div class="col-12"><div class="alert alert-info">No se encontraron propiedades con esos filtros</div></div>';
                 return;
             }
-            
-            propertiesGrid.innerHTML = properties.map(property => `
+
+            propertiesGrid.innerHTML = properties.map(p => `
                 <div class="col-md-6 col-lg-4 mb-4">
                     <div class="card property-card h-100">
                         <div class="property-image">
                             <i class="fas fa-home fa-3x"></i>
-                            <div class="price-tag">${formatCurrency(property.price)}</div>
+                            <div class="price-tag">${formatCurrency(p.price)}</div>
+                            ${renderConditionTag(p.property_condition)}
+                            ${renderOpportunityBadge(p.opportunity)}
                         </div>
                         <div class="card-body">
-                            <h5 class="card-title">${property.title || 'Sin título'}</h5>
+                            <div class="d-flex justify-content-between align-items-start">
+                                <h5 class="card-title mb-1">${p.title || 'Sin titulo'}</h5>
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-primary btn-sm" onclick="openEditModal(${p.id})" title="Editar">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button class="btn btn-outline-danger btn-sm" onclick="deleteProperty(${p.id})" title="Eliminar">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
                             <p class="card-text">
                                 <small class="text-muted">
-                                    <i class="fas fa-map-marker-alt"></i> ${property.address || 'Dirección no disponible'}
+                                    <i class="fas fa-map-marker-alt"></i> ${p.address || 'Direccion no disponible'}
                                 </small>
                             </p>
                             <div class="mb-2">
-                                <span class="badge bg-primary">${property.surface_area || 0} m²</span>
-                                <span class="badge bg-success">${property.bedrooms || 0} hab</span>
-                                <span class="badge bg-info">${property.bathrooms || 0} baños</span>
+                                <span class="badge bg-primary">${p.surface_area || 0} m2</span>
+                                <span class="badge bg-success">${p.bedrooms || 0} hab</span>
+                                <span class="badge bg-info">${p.bathrooms || 0} banos</span>
+                                ${p.floor_number ? `<span class="badge bg-secondary">Planta ${p.floor_number}</span>` : ''}
                             </div>
                             <div class="mb-2">
-                                <small class="text-muted">€${Math.round(property.price_per_sqm || 0).toLocaleString()} / m²</small>
+                                <small class="text-muted">${formatCurrency(p.price_per_sqm || 0)} / m2</small>
+                                ${renderOpportunityDiff(p.opportunity)}
                             </div>
-                            <div class="mb-2">
-                                ${renderFeatures(property)}
-                            </div>
+                            <div class="mb-2">${renderFeatures(p)}</div>
                             <div class="mt-2">
                                 <small class="text-muted">
-                                    <i class="fas fa-building"></i> ${property.source || 'Fuente desconocida'} | 
-                                    <i class="fas fa-city"></i> ${property.district || 'Distrito desconocido'}
+                                    <i class="fas fa-building"></i> ${p.source || '?'} |
+                                    <i class="fas fa-city"></i> ${p.district || '?'}
+                                    ${p.property_type ? `| <i class="fas fa-tag"></i> ${p.property_type}` : ''}
                                 </small>
                             </div>
                         </div>
                         <div class="card-footer">
-                            <a href="${property.url || '#'}" target="_blank" class="btn btn-sm btn-outline-primary w-100">
-                                <i class="fas fa-external-link-alt"></i> Ver en ${property.source || 'fuente'}
-                            </a>
+                            ${p.url ? `<a href="${p.url}" target="_blank" class="btn btn-sm btn-outline-primary w-100">
+                                <i class="fas fa-external-link-alt"></i> Ver en ${p.source || 'fuente'}
+                            </a>` : `<span class="text-muted small">Entrada manual</span>`}
                         </div>
                     </div>
                 </div>
             `).join('');
         }
 
-        // Render property features
-        function renderFeatures(property) {
+        function renderConditionTag(condition) {
+            if (!condition) return '';
+            const labels = {
+                'obra_nueva': 'Obra nueva',
+                'en_construccion': 'En construccion',
+                'segunda_mano': 'Segunda mano'
+            };
+            const cls = condition.replace('_', '-');
+            return `<span class="condition-tag ${cls}">${labels[condition] || condition}</span>`;
+        }
+
+        function renderOpportunityBadge(opp) {
+            if (!opp || opp.label === 'sin_datos') return '';
+            const labels = {
+                'oportunidad': 'OPORTUNIDAD',
+                'buen_precio': 'Buen precio',
+                'precio_justo': 'Precio justo',
+                'algo_caro': 'Algo caro',
+                'caro': 'Caro'
+            };
+            return `<span class="opp-badge ${opp.label}">${labels[opp.label] || ''}</span>`;
+        }
+
+        function renderOpportunityDiff(opp) {
+            if (!opp || opp.label === 'sin_datos' || opp.diff_pct === 0) return '';
+            const sign = opp.diff_pct > 0 ? '+' : '';
+            const cls = opp.diff_pct > 0 ? 'positive' : 'negative';
+            const icon = opp.diff_pct > 0 ? 'fa-arrow-down' : 'fa-arrow-up';
+            return `<span class="opp-diff ${cls}"><i class="fas ${icon}"></i> ${sign}${opp.diff_pct}% vs distrito</span>`;
+        }
+
+        function renderFeatures(p) {
             const features = [];
-            if (property.has_elevator) features.push('<span class="badge feature-badge"><i class="fas fa-elevator"></i> Ascensor</span>');
-            if (property.has_parking) features.push('<span class="badge feature-badge"><i class="fas fa-car"></i> Parking</span>');
-            if (property.has_terrace) features.push('<span class="badge feature-badge"><i class="fas fa-wind"></i> Terraza</span>');
-            if (property.has_balcony) features.push('<span class="badge feature-badge"><i class="fas fa-balcony"></i> Balcón</span>');
-            if (property.has_garden) features.push('<span class="badge feature-badge"><i class="fas fa-seedling"></i> Jardín</span>');
-            if (property.has_pool) features.push('<span class="badge feature-badge"><i class="fas fa-water"></i> Piscina</span>');
-            
+            if (p.has_elevator) features.push('<span class="badge feature-badge"><i class="fas fa-elevator"></i> Ascensor</span>');
+            if (p.has_parking) features.push('<span class="badge feature-badge"><i class="fas fa-car"></i> Parking</span>');
+            if (p.has_terrace) features.push('<span class="badge feature-badge"><i class="fas fa-wind"></i> Terraza</span>');
+            if (p.has_balcony) features.push('<span class="badge feature-badge"><i class="fas fa-archway"></i> Balcon</span>');
+            if (p.has_garden) features.push('<span class="badge feature-badge"><i class="fas fa-seedling"></i> Jardin</span>');
+            if (p.has_pool) features.push('<span class="badge feature-badge"><i class="fas fa-water"></i> Piscina</span>');
+            if (p.energy_certificate_rating) features.push(`<span class="badge feature-badge"><i class="fas fa-bolt"></i> Energia: ${p.energy_certificate_rating}</span>`);
             return features.join('');
         }
 
-        // Format currency
         function formatCurrency(amount) {
-            if (!amount) return '€0';
-            return '€' + Math.round(amount).toLocaleString();
+            if (!amount) return '0 EUR';
+            return Math.round(amount).toLocaleString('es-ES') + ' EUR';
         }
 
-        // Show/hide loading indicator
         function showLoading(show) {
-            if (show) {
-                loadingIndicator.style.display = 'block';
-                propertiesGrid.innerHTML = '';
-            } else {
-                loadingIndicator.style.display = 'none';
-            }
+            loadingIndicator.style.display = show ? 'block' : 'none';
+            if (show) propertiesGrid.innerHTML = '';
         }
 
-        // Apply filters
+        // ====== FILTERS ======
         function applyFilters() {
-            const searchTerm = searchInput.value.toLowerCase();
-            const district = districtFilter.value;
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const district = document.getElementById('districtFilter').value;
+            const condition = document.getElementById('conditionFilter').value;
+            const propType = document.getElementById('propertyTypeFilter').value;
             const minPrice = parseFloat(document.getElementById('minPrice').value) || 0;
             const maxPrice = parseFloat(document.getElementById('maxPrice').value) || Infinity;
+            const minSurface = parseFloat(document.getElementById('minSurface').value) || 0;
+            const maxSurface = parseFloat(document.getElementById('maxSurface').value) || Infinity;
             const bedrooms = parseInt(document.getElementById('bedrooms').value) || 0;
-            
-            let filtered = allProperties.filter(property => {
-                // Search term filter
-                if (searchTerm && 
-                    !(property.title?.toLowerCase().includes(searchTerm) ||
-                      property.address?.toLowerCase().includes(searchTerm) ||
-                      property.district?.toLowerCase().includes(searchTerm) ||
-                      property.description?.toLowerCase().includes(searchTerm))) {
-                    return false;
-                }
-                
-                // District filter
-                if (district && !property.district?.toLowerCase().includes(district.toLowerCase())) {
-                    return false;
-                }
-                
-                // Price filter
-                if (property.price && (property.price < minPrice || property.price > maxPrice)) {
-                    return false;
-                }
-                
-                // Bedrooms filter
-                if (bedrooms > 0 && property.bedrooms !== bedrooms) {
-                    return false;
-                }
-                
+            const bathrooms = parseInt(document.getElementById('bathrooms').value) || 0;
+
+            const wantElevator = document.getElementById('feat_elevator').checked;
+            const wantParking = document.getElementById('feat_parking').checked;
+            const wantTerrace = document.getElementById('feat_terrace').checked;
+            const wantBalcony = document.getElementById('feat_balcony').checked;
+            const wantGarden = document.getElementById('feat_garden').checked;
+            const wantPool = document.getElementById('feat_pool').checked;
+
+            const filtered = allProperties.filter(p => {
+                if (search && !(
+                    (p.title || '').toLowerCase().includes(search) ||
+                    (p.address || '').toLowerCase().includes(search) ||
+                    (p.district || '').toLowerCase().includes(search) ||
+                    (p.description || '').toLowerCase().includes(search)
+                )) return false;
+
+                if (district && !(p.district || '').toLowerCase().includes(district.toLowerCase())) return false;
+                if (condition && p.property_condition !== condition) return false;
+                if (propType && p.property_type !== propType) return false;
+
+                if (p.price && (p.price < minPrice || p.price > maxPrice)) return false;
+                if (p.surface_area && (p.surface_area < minSurface || p.surface_area > maxSurface)) return false;
+                if (bedrooms > 0 && p.bedrooms !== bedrooms) return false;
+                if (bathrooms > 0 && p.bathrooms !== bathrooms) return false;
+
+                if (wantElevator && !p.has_elevator) return false;
+                if (wantParking && !p.has_parking) return false;
+                if (wantTerrace && !p.has_terrace) return false;
+                if (wantBalcony && !p.has_balcony) return false;
+                if (wantGarden && !p.has_garden) return false;
+                if (wantPool && !p.has_pool) return false;
+
                 return true;
             });
-            
+
             renderProperties(filtered);
         }
 
-        // Clear filters
         function clearFilters() {
-            searchInput.value = '';
-            districtFilter.value = '';
+            document.getElementById('searchInput').value = '';
+            document.getElementById('districtFilter').value = '';
+            document.getElementById('conditionFilter').value = '';
+            document.getElementById('propertyTypeFilter').value = '';
             document.getElementById('minPrice').value = '';
             document.getElementById('maxPrice').value = '';
+            document.getElementById('minSurface').value = '';
+            document.getElementById('maxSurface').value = '';
             document.getElementById('bedrooms').value = '';
-            
+            document.getElementById('bathrooms').value = '';
+            document.querySelectorAll('.feature-check input').forEach(el => el.checked = false);
             renderProperties(allProperties);
         }
 
-        // Search on input
-        searchInput.addEventListener('input', applyFilters);
-        districtFilter.addEventListener('change', applyFilters);
+        function refreshAll() {
+            loadStats();
+            loadProperties();
+        }
+
+        // ====== ADD PROPERTY ======
+        async function submitProperty() {
+            const title = document.getElementById('f_title').value.trim();
+            const price = document.getElementById('f_price').value;
+
+            if (!title || !price) {
+                showFormAlert('formAlert', 'Titulo y precio son obligatorios', 'danger');
+                return;
+            }
+
+            const data = {
+                title: title,
+                price: parseFloat(price),
+                url: document.getElementById('f_url').value.trim(),
+                source: document.getElementById('f_source').value,
+                surface_area: document.getElementById('f_surface').value || null,
+                bedrooms: document.getElementById('f_bedrooms').value || null,
+                bathrooms: document.getElementById('f_bathrooms').value || null,
+                rooms: document.getElementById('f_rooms').value || null,
+                floor_number: document.getElementById('f_floor').value || null,
+                district: document.getElementById('f_district').value.trim(),
+                address: document.getElementById('f_address').value.trim(),
+                postal_code: document.getElementById('f_postal').value.trim(),
+                property_type: document.getElementById('f_type').value,
+                property_condition: document.getElementById('f_condition').value,
+                construction_year: document.getElementById('f_year').value || null,
+                energy_certificate_rating: document.getElementById('f_energy').value,
+                description: document.getElementById('f_description').value.trim(),
+                has_elevator: document.getElementById('f_elevator').checked,
+                has_parking: document.getElementById('f_parking').checked,
+                has_terrace: document.getElementById('f_terrace').checked,
+                has_balcony: document.getElementById('f_balcony').checked,
+                has_garden: document.getElementById('f_garden').checked,
+                has_pool: document.getElementById('f_pool').checked,
+            };
+
+            try {
+                const resp = await fetch('/api/properties', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                const result = await resp.json();
+                if (resp.ok) {
+                    showFormAlert('formAlert', 'Propiedad guardada correctamente', 'success');
+                    document.getElementById('addPropertyForm').reset();
+                    setTimeout(() => {
+                        bootstrap.Modal.getInstance(document.getElementById('addPropertyModal')).hide();
+                        document.getElementById('formAlert').classList.add('d-none');
+                        refreshAll();
+                    }, 800);
+                } else {
+                    showFormAlert('formAlert', result.error || 'Error al guardar', 'danger');
+                }
+            } catch (err) {
+                showFormAlert('formAlert', 'Error de conexion', 'danger');
+            }
+        }
+
+        // ====== EDIT PROPERTY ======
+        async function openEditModal(id) {
+            try {
+                const resp = await fetch(`/api/property/${id}`);
+                const p = await resp.json();
+                if (!resp.ok) return;
+
+                document.getElementById('e_id').value = p.id;
+                document.getElementById('e_title').value = p.title || '';
+                document.getElementById('e_url').value = p.url || '';
+                document.getElementById('e_price').value = p.price || '';
+                document.getElementById('e_surface').value = p.surface_area || '';
+                document.getElementById('e_source').value = p.source || 'manual';
+                document.getElementById('e_postal').value = p.postal_code || '';
+                document.getElementById('e_bedrooms').value = p.bedrooms || '';
+                document.getElementById('e_bathrooms').value = p.bathrooms || '';
+                document.getElementById('e_district').value = p.district || '';
+                document.getElementById('e_address').value = p.address || '';
+                document.getElementById('e_type').value = p.property_type || 'apartment';
+                document.getElementById('e_condition').value = p.property_condition || '';
+                document.getElementById('e_year').value = p.construction_year || '';
+                document.getElementById('e_energy').value = p.energy_certificate_rating || '';
+                document.getElementById('e_description').value = p.description || '';
+                document.getElementById('e_elevator').checked = !!p.has_elevator;
+                document.getElementById('e_parking').checked = !!p.has_parking;
+                document.getElementById('e_terrace').checked = !!p.has_terrace;
+                document.getElementById('e_balcony').checked = !!p.has_balcony;
+                document.getElementById('e_garden').checked = !!p.has_garden;
+                document.getElementById('e_pool').checked = !!p.has_pool;
+
+                new bootstrap.Modal(document.getElementById('editPropertyModal')).show();
+            } catch (err) {
+                console.error('Error loading property:', err);
+            }
+        }
+
+        async function updateProperty() {
+            const id = document.getElementById('e_id').value;
+            const data = {
+                title: document.getElementById('e_title').value.trim(),
+                url: document.getElementById('e_url').value.trim(),
+                price: parseFloat(document.getElementById('e_price').value) || 0,
+                surface_area: parseFloat(document.getElementById('e_surface').value) || null,
+                source: document.getElementById('e_source').value,
+                postal_code: document.getElementById('e_postal').value.trim(),
+                bedrooms: parseInt(document.getElementById('e_bedrooms').value) || null,
+                bathrooms: parseInt(document.getElementById('e_bathrooms').value) || null,
+                district: document.getElementById('e_district').value.trim(),
+                address: document.getElementById('e_address').value.trim(),
+                property_type: document.getElementById('e_type').value,
+                property_condition: document.getElementById('e_condition').value,
+                construction_year: parseInt(document.getElementById('e_year').value) || null,
+                energy_certificate_rating: document.getElementById('e_energy').value,
+                description: document.getElementById('e_description').value.trim(),
+                has_elevator: document.getElementById('e_elevator').checked,
+                has_parking: document.getElementById('e_parking').checked,
+                has_terrace: document.getElementById('e_terrace').checked,
+                has_balcony: document.getElementById('e_balcony').checked,
+                has_garden: document.getElementById('e_garden').checked,
+                has_pool: document.getElementById('e_pool').checked,
+            };
+
+            try {
+                const resp = await fetch(`/api/property/${id}`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                const result = await resp.json();
+                if (resp.ok) {
+                    showFormAlert('editFormAlert', 'Propiedad actualizada', 'success');
+                    setTimeout(() => {
+                        bootstrap.Modal.getInstance(document.getElementById('editPropertyModal')).hide();
+                        document.getElementById('editFormAlert').classList.add('d-none');
+                        refreshAll();
+                    }, 800);
+                } else {
+                    showFormAlert('editFormAlert', result.error || 'Error al actualizar', 'danger');
+                }
+            } catch (err) {
+                showFormAlert('editFormAlert', 'Error de conexion', 'danger');
+            }
+        }
+
+        // ====== DELETE ======
+        async function deleteProperty(id) {
+            if (!confirm('Eliminar esta propiedad?')) return;
+            try {
+                const resp = await fetch(`/api/property/${id}`, { method: 'DELETE' });
+                if (resp.ok) refreshAll();
+            } catch (err) {
+                console.error('Error deleting:', err);
+            }
+        }
+
+        // ====== HELPERS ======
+        function showFormAlert(alertId, msg, type) {
+            const el = document.getElementById(alertId);
+            el.className = `alert alert-${type}`;
+            el.textContent = msg;
+            el.classList.remove('d-none');
+        }
     </script>
 </body>
 </html>

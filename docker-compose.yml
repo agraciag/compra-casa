@@ -1,35 +1,12 @@
-version: '3.8'
-
 services:
   compra-casa-web:
     build: .
     ports:
-      - "5000:5000"
+      - "4999:5000"
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
     environment:
       - FLASK_ENV=production
-      - DATABASE_URL=sqlite:///data/properties.db
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
     restart: unless-stopped
-    networks:
-      - compra-casa-network
-
-  # Optional: Add a reverse proxy if needed
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
-      - ./ssl:/etc/nginx/ssl
-    depends_on:
-      - compra-casa-web
-    restart: unless-stopped
-    networks:
-      - compra-casa-network
-
-networks:
-  compra-casa-network:
-    driver: bridge

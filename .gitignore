@@ -3,8 +3,12 @@ venv/
 env/
 ENV/
 
-# Database (uncomment if you don't want to track the database)
-# data/properties.db
+# Database
+data/properties.db
+
+# Screenshots helper
+screenshots/page.html
+take_screenshots.py
 
 # Logs
 logs/

@@ -1,145 +1,114 @@
-# CasaCompra - Property Purchase Analysis Tool
+# CasaCompra - Analisis de Propiedades en Zaragoza
 
-This project helps analyze the housing market in Zaragoza, Spain by scraping real estate websites and creating a custom comparison tool to identify the best purchase opportunities.
+Aplicacion web para gestionar, comparar y detectar oportunidades de compra de vivienda en Zaragoza.
 
-## Project Overview
+Permite registrar propiedades manualmente desde distintos portales (Idealista, Fotocasa, Habitaclia...) y analizar automaticamente cuales representan una buena oportunidad segun el precio por metro cuadrado de cada distrito.
 
-The system collects housing data from various sources (Idealista, Fotocasa, etc.) and compares it with official data sources (Penotariado, Tinsa, etc.) to help make informed decisions about purchasing a home in Zaragoza.
+![Dashboard](screenshots/01_dashboard.png)
 
-## Features
+## Funcionalidades
 
-- **Ethical Web Scraping**: Slow, respectful scraping to avoid bans with configurable rate limiting
-- **Data Deduplication**: Intelligent detection and merging of duplicate listings across sources
-- **Comprehensive Database**: SQLite database with normalized property data
-- **Price Analysis**: Price per square meter calculations and market comparisons
-- **Quality Metrics**: Standardized metrics for comparing properties
-- **Duplicate Detection**: Identifies the same property listed on multiple portals
-- **Web Interface**: Modern web-based dashboard for property browsing and analysis
-- **Containerized Deployment**: Docker support for easy deployment
+- **Dashboard interactivo** con estadisticas, graficos por distrito y rangos de precio
+- **Formulario de alta** para registrar propiedades desde el movil o el ordenador
+- **Detector de oportunidades** que compara el precio/m2 de cada propiedad contra la media de su distrito
+- **Filtros avanzados**: precio, superficie, habitaciones, banos, distrito, tipo, condicion (obra nueva / en construccion / segunda mano), y caracteristicas (ascensor, parking, terraza, piscina...)
+- **Edicion y eliminacion** de propiedades desde la interfaz
+- **Vista responsive** adaptada a movil
 
-## Project Structure
+### Formulario de alta manual
+
+![Formulario](screenshots/03_add_property.png)
+
+### Vista completa con cards de oportunidad
+
+![Full page](screenshots/02_full_page.png)
+
+### Filtrado por caracteristicas
+
+![Filtros](screenshots/05_filtered_features.png)
+
+## Stack
+
+- **Backend**: Python + Flask
+- **Frontend**: Bootstrap 5 + Chart.js
+- **Base de datos**: SQLite
+- **Despliegue**: Docker / Docker Compose
+
+## Inicio rapido
+
+```bash
+# Clonar el repositorio
+git clone https://github.com/agraciag/compra-casa.git
+cd compra-casa
+
+# Instalar dependencias
+pip install flask beautifulsoup4
+
+# Cargar datos de ejemplo (opcional)
+python demo_system.py
+
+# Iniciar la aplicacion
+python app.py
+# Abrir http://localhost:5001
+```
+
+### Con Docker
+
+```bash
+docker compose up --build
+# Abrir http://localhost:5000
+```
+
+## Estructura del proyecto
 
 ```
 compra-casa/
-├── app.py                # Flask web application
-├── templates/            # HTML templates for web interface
-│   └── index.html
-├── data/
-│   ├── raw/              # Raw scraped data
-│   └── processed/        # Cleaned and processed data
+├── app.py                  # Aplicacion Flask (API REST + vistas)
+├── demo_system.py          # Script para cargar datos de ejemplo
+├── config/
+│   └── settings.py         # Configuracion general
 ├── src/
-│   ├── scraper/          # Web scraping modules
-│   ├── analysis/         # Data analysis modules
-│   ├── visualization/    # Data visualization modules
-│   └── utils/            # Utility functions
-├── docs/                 # Documentation
-├── config/               # Configuration files
-├── logs/                 # Log files
-├── venv/                 # Virtual environment
-├── Dockerfile            # Docker configuration
-├── docker-compose.yml    # Docker Compose configuration
-├── start_web.sh          # Web application startup script
-├── requirements.txt      # Python dependencies
-└── README.md
+│   ├── data_collection.py  # Script de recoleccion de datos
+│   ├── scraper/
+│   │   └── basic_scraper.py
+│   └── utils/
+│       ├── database.py     # Capa de acceso a SQLite
+│       ├── models.py       # Modelo de datos (dataclass)
+│       └── deduplication.py
+├── templates/
+│   └── index.html          # Dashboard (SPA)
+├── screenshots/            # Capturas para el README
+├── Dockerfile
+├── docker-compose.yml
+└── .dockerignore
 ```
 
-## Setup
+## API
 
-### Option 1: Local Development
-1. Clone the repository
-2. Create a virtual environment:
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+| Metodo | Endpoint | Descripcion |
+|---|---|---|
+| GET | `/api/properties` | Listar propiedades con filtros |
+| POST | `/api/properties` | Crear propiedad |
+| GET | `/api/property/<id>` | Detalle de propiedad |
+| PUT | `/api/property/<id>` | Actualizar propiedad |
+| DELETE | `/api/property/<id>` | Eliminar propiedad |
+| GET | `/api/stats` | Estadisticas y medias por distrito |
+| GET | `/api/search?q=` | Busqueda por texto |
 
-### Option 2: Docker Container
-1. Build and run with Docker Compose:
-   ```bash
-   docker-compose up --build
-   ```
+## Detector de oportunidades
 
-## Usage
+Cada propiedad recibe una puntuacion automatica comparando su precio/m2 contra la media del distrito:
 
-### Web Interface (Recommended)
-Start the web application:
-```bash
-# Local
-./start_web.sh
+| Etiqueta | Significado |
+|---|---|
+| **OPORTUNIDAD** | >20% por debajo de la media del distrito |
+| **Buen precio** | 10-20% por debajo |
+| **Precio justo** | Dentro de la media (0-10%) |
+| **Algo caro** | 0-10% por encima |
+| **Caro** | >10% por encima |
 
-# Or with Docker
-docker-compose up --build
-```
+Cuantas mas propiedades registres por distrito, mas precisas seran las comparaciones.
 
-Access the dashboard at `http://localhost:5000`
+## Licencia
 
-### Quick Demo
-Run the demo to verify the system is working:
-```bash
-python demo_system.py
-```
-
-### Start Data Collection
-Run the main data collection script:
-```bash
-python src/data_collection.py
-```
-
-Follow the prompts to begin collecting property data from various sources.
-
-### Configuration
-Adjust scraping parameters in `config/settings.py`:
-- Rate limiting settings
-- Source-specific configurations
-- Geographic filters for Zaragoza
-- Property filters and validation thresholds
-
-## Web Interface Features
-
-- **Interactive Dashboard**: Browse properties with filtering and search
-- **Statistics Panel**: View market statistics and trends
-- **Visual Charts**: District distribution and price range visualizations
-- **Property Cards**: Detailed property information with features
-- **Real-time Updates**: Refresh data without page reload
-
-## Data Model
-
-The system stores comprehensive property information including:
-- Basic details (price, size, rooms, etc.)
-- Location data (address, coordinates, district)
-- Features (elevator, parking, terrace, etc.)
-- Historical price tracking
-- Source attribution and metadata
-
-## Ethical Scraping
-
-The system implements respectful scraping practices:
-- Configurable delays between requests (5-10 seconds minimum)
-- Random user agent rotation
-- Robots.txt compliance checking
-- Session management with cookies
-- Error handling and retry mechanisms
-
-## Data Quality
-
-- Validation of price ranges and property characteristics
-- Deduplication across sources
-- Standardized address and feature extraction
-- Quality scoring for property comparisons
-
-## Next Steps
-
-1. Begin collecting data from real sources
-2. Implement additional source parsers as needed
-3. Set up periodic runs using a scheduler
-4. Enhance visualization dashboards
-5. Create advanced property comparison tools
-6. Add market trend analysis features
-
-## Legal Notice
-
-This project respects website terms of service and implements rate limiting to avoid placing undue burden on servers. Always check individual websites' robots.txt and terms of service before scraping.
+MIT

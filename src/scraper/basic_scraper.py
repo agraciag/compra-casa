@@ -1,3 +1,4 @@
+import re
 import requests
 import time
 import random
@@ -6,7 +7,6 @@ from bs4 import BeautifulSoup
 import logging
 from urllib.robotparser import RobotFileParser
 from urllib.parse import urljoin, urlparse
-import json
 from datetime import datetime
 
 import sys
@@ -16,7 +16,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from src.utils.models import PropertyModel
 from src.utils.database import PropertyDatabase
 from src.utils.deduplication import PropertyDeduplicator
-from config.settings import SCRAPING_CONFIG, SOURCE_CONFIGS
+from config.settings import (
+    SCRAPING_CONFIG, LOGGING_CONFIG, SOURCE_CONFIGS,
+    SEARCH_SCOPE, FILTERED_SEARCH_URLS,
+)
 
 
 class PropertyScraper:
@@ -48,13 +51,12 @@ class PropertyScraper:
     
     def setup_logging(self):
         """Set up logging for the scraper"""
-        log_dir = SCRAPING_CONFIG.get('log_dir', 'logs/')
-        import os
+        log_dir = LOGGING_CONFIG.get('log_dir', 'logs/')
         os.makedirs(log_dir, exist_ok=True)
-        
+
         logging.basicConfig(
-            level=getattr(logging, SCRAPING_CONFIG.get('level', 'INFO')),
-            format=SCRAPING_CONFIG.get('format', '%(asctime)s - %(name)s - %(levelname)s - %(message)s'),
+            level=getattr(logging, LOGGING_CONFIG.get('level', 'INFO')),
+            format=LOGGING_CONFIG.get('format', '%(asctime)s - %(name)s - %(levelname)s - %(message)s'),
             handlers=[
                 logging.FileHandler(f"{log_dir}scraper.log"),
                 logging.StreamHandler()
@@ -145,21 +147,11 @@ class PropertyScraper:
     
     def log_request(self, url: str, source: str, status_code: int, response_time: float):
         """Log successful requests"""
-        # Log to database
-        from .models import ScrapingLogModel
-        log_entry = ScrapingLogModel(
-            source=source or 'unknown',
-            url=url,
-            status_code=status_code,
-            response_time=response_time
-        )
-        
         cursor = self.db.conn.cursor()
         cursor.execute('''
             INSERT INTO scraping_logs (source, url, status_code, response_time, scraped_at)
             VALUES (?, ?, ?, ?, ?)
-        ''', (log_entry.source, log_entry.url, log_entry.status_code, 
-              log_entry.response_time, log_entry.scraped_at))
+        ''', (source or 'unknown', url, status_code, response_time, datetime.now().isoformat()))
         self.db.conn.commit()
     
     def log_error(self, url: str, source: str, error_message: str):
@@ -233,6 +225,10 @@ class PropertyScraper:
                     floor_number = self.extract_floor_number(feat)
                     break
             
+            # Detect property condition
+            all_text = ' '.join([title or '', description or '', ' '.join(features)])
+            property_condition = self.detect_property_condition(all_text, url)
+
             # Create property model
             property_data = {
                 'external_id': self.extract_external_id(url, 'idealista'),
@@ -252,78 +248,100 @@ class PropertyScraper:
                 'has_terrace': 'terraza' in ' '.join(features).lower() if features else False,
                 'has_balcony': 'balcón' in ' '.join(features).lower() if features else False,
                 'has_garden': 'jardín' in ' '.join(features).lower() if features else False,
+                'property_condition': property_condition,
             }
-            
+
             return PropertyModel(**property_data)
-            
+
         except Exception as e:
             self.logger.error(f"Error parsing Idealista property {url}: {str(e)}")
             return None
     
     def parse_fotocasa_property(self, soup: BeautifulSoup, url: str) -> Optional[PropertyModel]:
-        """Parse property data from Fotocasa"""
+        """Parse property data from Fotocasa (re-Detail* classes)."""
         try:
-            # Extract title
-            title_elem = soup.find('h1')
+            # Title
+            title_elem = soup.find('h1', class_=lambda c: c and 'DetailHeader-propertyTitle' in c)
+            if not title_elem:
+                title_elem = soup.find('h1')
             title = title_elem.get_text(strip=True) if title_elem else None
-            
-            # Extract price
-            price_elem = soup.find('strong', class_='card__price')
-            if not price_elem:
-                price_elem = soup.find(class_='price')
-            price_text = price_elem.get_text(strip=True) if price_elem else None
-            price = self.extract_price(price_text) if price_text else None
-            
-            # Extract features container
-            features_container = soup.find('div', class_='containerCharacteristics')
-            if not features_container:
-                features_container = soup.find('ul', class_='features')
-            
-            features = []
-            if features_container:
-                feature_items = features_container.find_all(['li', 'div', 'span'])
-                for item in feature_items:
-                    text = item.get_text(strip=True).lower()
-                    if text:
-                        features.append(text)
-            
-            # Extract description
-            desc_elem = soup.find('div', class_='descriptionText')
-            if not desc_elem:
-                desc_elem = soup.find('div', class_='description')
-            description = desc_elem.get_text(strip=True) if desc_elem else None
-            
-            # Extract address
-            address_elem = soup.find('span', class_='address')
-            if not address_elem:
-                address_elem = soup.find('p', class_='address')
-            address = address_elem.get_text(strip=True) if address_elem else None
-            
-            # Extract surface area
-            surface_area = None
-            for feat in features:
-                if 'm²' in feat or 'metros' in feat:
-                    surface_area = self.extract_surface_area(feat)
-                    break
-            
-            # Extract rooms
-            rooms = None
+
+            # Price: span.re-DetailHeader-price -> "235.000 €"
+            price = None
+            price_elem = soup.find('span', class_=lambda c: c and 'DetailHeader-price' in c)
+            if price_elem:
+                price = self.extract_price(price_elem.get_text(strip=True))
+
+            # Header features: rooms, bathrooms, surface, floor
             bedrooms = None
-            for feat in features:
-                if 'dormitorio' in feat or 'habitación' in feat or 'room' in feat:
-                    rooms = self.extract_number(feat)
-                    if 'dormitorio' in feat:
-                        bedrooms = self.extract_number(feat)
-                    break
-            
-            # Extract bathrooms
             bathrooms = None
-            for feat in features:
-                if 'baño' in feat or 'bathroom' in feat or 'wc' in feat:
-                    bathrooms = self.extract_number(feat)
-                    break
-            
-            # Create property model
+            surface_area = None
+            floor_number = None
+
+            rooms_elem = soup.find('li', class_=lambda c: c and 'DetailHeader-rooms' in c)
+            if rooms_elem:
+                bedrooms = self.extract_number(rooms_elem.get_text(strip=True))
+
+            bath_elem = soup.find('li', class_=lambda c: c and 'DetailHeader-bathrooms' in c)
+            if bath_elem:
+                bathrooms = self.extract_number(bath_elem.get_text(strip=True))
+
+            surface_elem = soup.find('li', class_=lambda c: c and 'DetailHeader-surface' in c)
+            if surface_elem:
+                surface_area = self.extract_surface_area(surface_elem.get_text(strip=True))
+
+            floor_elem = soup.find('li', class_=lambda c: c and 'floor' in c.lower())
+            if floor_elem:
+                floor_number = self.extract_floor_number(floor_elem.get_text(strip=True))
+
+            # Address from title (format: "Piso en venta en STREET, DISTRICT")
+            address = None
+            district = None
+            if title and ' en ' in title:
+                # Extract everything after last "en "
+                parts = title.split(' en ')
+                if len(parts) >= 2:
+                    location = parts[-1]
+                    if ',' in location:
+                        addr_part, district = location.rsplit(',', 1)
+                        address = addr_part.strip()
+                        district = district.strip()
+                    else:
+                        address = location.strip()
+
+            # Municipality
+            muni_elem = soup.find('p', class_=lambda c: c and 'municipalityTitle' in c)
+
+            # Description
+            desc_elem = soup.find('p', class_=lambda c: c and 'DetailDescription' in c)
+            description = desc_elem.get_text(strip=True) if desc_elem else None
+
+            # Energy certificate: look for re-DetailEnergyCertificate-value--X
+            energy_rating = None
+            cert_elem = soup.find(class_=lambda c: c and 'DetailEnergyCertificate-value--' in c)
+            if cert_elem:
+                for cls in cert_elem.get('class', []):
+                    if 'value--' in cls:
+                        energy_rating = cls.split('value--')[-1].upper()
+                        break
+
+            # Extras: li.re-DetailExtras-listItem
+            extras = []
+            for item in soup.find_all('li', class_=lambda c: c and 'DetailExtras-listItem' in c):
+                extras.append(item.get_text(strip=True).lower())
+
+            extras_text = ' '.join(extras)
+            has_parking = 'parking' in url.lower() or 'garaje' in extras_text or 'parking' in extras_text
+            has_terrace = 'terraza' in extras_text
+            has_balcony = 'balcón' in extras_text or 'balcon' in extras_text
+            has_garden = 'jardín' in extras_text or 'jardin' in extras_text
+            has_pool = 'piscina' in extras_text
+            has_elevator = 'ascensor' in extras_text or 'ascensor' in url.lower()
+
+            # Detect condition
+            all_text = ' '.join([title or '', description or '', extras_text])
+            property_condition = self.detect_property_condition(all_text, url)
+
             property_data = {
                 'external_id': self.extract_external_id(url, 'fotocasa'),
                 'source': 'fotocasa',
@@ -331,19 +349,24 @@ class PropertyScraper:
                 'title': title,
                 'description': description,
                 'address': address,
+                'district': district,
                 'price': price,
                 'surface_area': surface_area,
-                'rooms': rooms,
                 'bedrooms': bedrooms,
                 'bathrooms': bathrooms,
-                'has_parking': 'garaje' in ' '.join(features).lower() if features else False,
-                'has_terrace': 'terraza' in ' '.join(features).lower() if features else False,
-                'has_balcony': 'balcón' in ' '.join(features).lower() if features else False,
-                'has_garden': 'jardín' in ' '.join(features).lower() if features else False,
+                'floor_number': floor_number,
+                'has_elevator': has_elevator,
+                'has_parking': has_parking,
+                'has_terrace': has_terrace,
+                'has_balcony': has_balcony,
+                'has_garden': has_garden,
+                'has_pool': has_pool,
+                'energy_certificate_rating': energy_rating,
+                'property_condition': property_condition,
             }
-            
+
             return PropertyModel(**property_data)
-            
+
         except Exception as e:
             self.logger.error(f"Error parsing Fotocasa property {url}: {str(e)}")
             return None
@@ -410,6 +433,10 @@ class PropertyScraper:
                     bathrooms = self.extract_number(feat)
                     break
             
+            # Detect property condition
+            all_text = ' '.join([title or '', description or '', ' '.join(features)])
+            property_condition = self.detect_property_condition(all_text, url)
+
             # Create property model
             property_data = {
                 'external_id': self.extract_external_id(url, 'habitaclia'),
@@ -427,33 +454,63 @@ class PropertyScraper:
                 'has_terrace': 'terraza' in ' '.join(features).lower() if features else False,
                 'has_balcony': 'balcón' in ' '.join(features).lower() if features else False,
                 'has_garden': 'jardín' in ' '.join(features).lower() if features else False,
+                'property_condition': property_condition,
             }
-            
+
             return PropertyModel(**property_data)
-            
+
         except Exception as e:
             self.logger.error(f"Error parsing Habitaclia property {url}: {str(e)}")
             return None
     
+    def detect_property_condition(self, text: str, url: str) -> Optional[str]:
+        """Detect property condition from text content and URL."""
+        combined = (text or '').lower() + ' ' + (url or '').lower()
+        construction_keywords = ['en construcción', 'en construccion', 'sobre plano', 'entrega prevista', 'prevista entrega']
+        new_keywords = ['obra nueva', 'nueva construcción', 'nueva construccion', 'a estrenar', 'promoción nueva', 'promocion nueva']
+        if any(kw in combined for kw in construction_keywords):
+            return 'en_construccion'
+        if any(kw in combined for kw in new_keywords):
+            return 'obra_nueva'
+        if 'segunda mano' in combined or 'second hand' in combined:
+            return 'segunda_mano'
+        return None
+
     def extract_price(self, price_text: str) -> Optional[float]:
-        """Extract price from text"""
+        """Extract price from text. Handles Spanish format (235.000 €) and others."""
         if not price_text:
             return None
-        
-        # Remove non-numeric characters except decimal point and comma
-        import re
+
+        # Remove currency symbols, spaces, and non-numeric chars except . and ,
         price_str = re.sub(r'[^\d,.]', '', price_text)
-        
-        # Handle different decimal separators
+
         if ',' in price_str and '.' in price_str:
-            # If both commas and periods exist, assume comma is thousands separator
-            price_str = price_str.replace(',', '')
+            # Both separators: determine which is thousands vs decimal
+            if price_str.index('.') < price_str.index(','):
+                # Format: 1.234,56 (Spanish decimal comma)
+                price_str = price_str.replace('.', '').replace(',', '.')
+            else:
+                # Format: 1,234.56 (English)
+                price_str = price_str.replace(',', '')
+        elif '.' in price_str:
+            # Only dots: check if it's a thousands separator (e.g. "235.000")
+            parts = price_str.split('.')
+            if len(parts) == 2 and len(parts[1]) == 3:
+                # Thousands separator (235.000 = 235000)
+                price_str = price_str.replace('.', '')
+            elif len(parts) > 2:
+                # Multiple dots = thousands (1.234.567)
+                price_str = price_str.replace('.', '')
+            # else: single dot with != 3 decimals, treat as decimal point
         elif ',' in price_str:
-            # If only comma exists, check if it's a decimal separator
             parts = price_str.split(',')
-            if len(parts) == 2 and len(parts[1]) == 2:  # Likely decimal
+            if len(parts) == 2 and len(parts[1]) == 2:
+                # Decimal comma (1234,56)
                 price_str = price_str.replace(',', '.')
-        
+            else:
+                # Thousands comma
+                price_str = price_str.replace(',', '')
+
         try:
             return float(price_str)
         except ValueError:
@@ -461,7 +518,6 @@ class PropertyScraper:
     
     def extract_surface_area(self, feature_text: str) -> Optional[float]:
         """Extract surface area from feature text"""
-        import re
         # Look for patterns like "85 m²", "120 metros", etc.
         patterns = [
             r'(\d+(?:[.,]\d+)?)\s*m²',
@@ -481,7 +537,6 @@ class PropertyScraper:
     
     def extract_number(self, feature_text: str) -> Optional[int]:
         """Extract a number from feature text"""
-        import re
         # Look for numbers in the text
         numbers = re.findall(r'\d+', feature_text)
         if numbers:
@@ -493,7 +548,6 @@ class PropertyScraper:
     
     def extract_floor_number(self, feature_text: str) -> Optional[int]:
         """Extract floor number from feature text"""
-        import re
         # Look for floor numbers in various formats
         patterns = [
             r'(\d+)\s*(?:ª|a|st|nd|rd|th|piso|floor)',
@@ -511,7 +565,6 @@ class PropertyScraper:
     
     def extract_external_id(self, url: str, source: str) -> str:
         """Extract external ID from URL"""
-        import re
         # Different patterns for different sources
         patterns = {
             'idealista': r'/(\d+)/',
@@ -554,107 +607,156 @@ class PropertyScraper:
             return None
         
         # Validate the property data
-        from .models import validate_property_data
+        from src.utils.models import validate_property_data
         if not validate_property_data(property_model.to_dict()):
             self.logger.error(f"Property data validation failed for {url}")
             return None
         
         return property_model
     
+    def meets_scope(self, property_model: PropertyModel) -> bool:
+        """Check if a property meets the active search scope criteria."""
+        scope = SEARCH_SCOPE
+        if property_model.price:
+            if property_model.price < scope.get('min_price', 0):
+                self.logger.debug(f"Skipped: price {property_model.price} below min {scope['min_price']}")
+                return False
+            if property_model.price > scope.get('max_price', float('inf')):
+                self.logger.debug(f"Skipped: price {property_model.price} above max {scope['max_price']}")
+                return False
+        if scope.get('min_bedrooms') and property_model.bedrooms is not None:
+            if property_model.bedrooms < scope['min_bedrooms']:
+                self.logger.debug(f"Skipped: {property_model.bedrooms} bedrooms < {scope['min_bedrooms']}")
+                return False
+        if scope.get('min_bathrooms') and property_model.bathrooms is not None:
+            if property_model.bathrooms < scope['min_bathrooms']:
+                self.logger.debug(f"Skipped: {property_model.bathrooms} bathrooms < {scope['min_bathrooms']}")
+                return False
+        if scope.get('has_parking') and property_model.has_parking is not None:
+            if not property_model.has_parking:
+                self.logger.debug("Skipped: no parking")
+                return False
+        return True
+
     def save_property(self, property_model: PropertyModel):
-        """Save property to database with duplicate checking"""
+        """Save property to database with scope validation and duplicate checking."""
+        # Post-scrape scope validation
+        if not self.meets_scope(property_model):
+            self.logger.info(f"Out of scope, skipped: {property_model.title or property_model.url}")
+            return None
+
         # Check for duplicates
         potential_duplicates = self.deduplicator.find_potential_duplicates(property_model)
-        
+
         if potential_duplicates:
-            # Handle the duplicate
             is_duplicate, existing_id = self.deduplicator.handle_duplicate_property(
                 property_model, potential_duplicates
             )
             if is_duplicate:
                 self.logger.info(f"Updated existing property {existing_id} from {property_model.source}")
                 return existing_id
+
+        # New property
+        property_dict = property_model.to_dict()
+        property_id = self.db.insert_property(property_dict)
+        self.logger.info(f"Saved new property {property_id} from {property_model.source}")
+        return property_id
+
+    def build_page_url(self, source: str, page_num: int) -> Optional[str]:
+        """Build a paginated search URL using the pre-filtered base URL."""
+        base_url = FILTERED_SEARCH_URLS.get(source)
+        if not base_url:
+            self.logger.error(f"No filtered URL configured for source: {source}")
+            return None
+
+        if source == 'idealista':
+            # Idealista: insert pagina-N before trailing slash
+            if page_num == 1:
+                return base_url
+            return base_url.rstrip('/') + f'/pagina-{page_num}.htm'
+        elif source == 'fotocasa':
+            # Fotocasa: append &combinedLocationIds and page param
+            sep = '&' if '?' in base_url else '?'
+            if page_num == 1:
+                return base_url
+            return f"{base_url}{sep}currentPage={page_num}"
         else:
-            # This is a new property, insert it
-            property_dict = property_model.to_dict()
-            property_id = self.db.insert_property(property_dict)
-            self.logger.info(f"Saved new property {property_id} from {property_model.source}")
-            return property_id
-    
-    def scrape_zaragoza_listings(self, source: str, max_pages: int = 5):
-        """Scrape property listings from a source for Zaragoza"""
-        self.logger.info(f"Starting to scrape {max_pages} pages from {source}")
-        
-        # Base URLs for Zaragoza searches
-        base_urls = {
-            'idealista': 'https://www.idealista.com/en/buscar/venta-viviendas/zaragoza/zaragoza/',
-            'fotocasa': 'https://www.fotocasa.es/es/comprar/viviendas/zaragoza-capital/',
-            'habitaclia': 'https://www.habitaclia.com/compra_venta_viviendas-zaragoza.htm',
-        }
-        
-        if source not in base_urls:
-            self.logger.error(f"Source {source} not supported for Zaragoza listings")
-            return
-        
-        base_url = base_urls[source]
-        
-        for page_num in range(1, max_pages + 1):
-            self.logger.info(f"Scraping page {page_num} from {source}")
-            
-            # Construct page URL (this is a simplified example)
-            if source == 'idealista':
-                page_url = f"{base_url}pagina-{page_num}.htm"
-            elif source == 'fotocasa':
-                page_url = f"{base_url}?pagina={page_num}"
-            elif source == 'habitaclia':
-                page_url = f"{base_url}?p={page_num}"
+            # Generic fallback
+            sep = '&' if '?' in base_url else '?'
+            return f"{base_url}{sep}page={page_num}"
+
+    def _extract_property_urls(self, soup: BeautifulSoup, source: str, base_url: str) -> List[str]:
+        """Extract unique property detail URLs from a listing page."""
+        seen = set()
+        urls = []
+
+        for a in soup.find_all('a', href=True):
+            href = a['href']
+            if source == 'fotocasa':
+                # Fotocasa detail URLs match: /es/comprar/vivienda/.../DIGITS/d
+                if not re.search(r'/vivienda/.+/\d+/d', href):
+                    continue
+            elif source == 'idealista':
+                # Idealista detail URLs match: /inmueble/DIGITS/
+                if '/inmueble/' not in href:
+                    continue
             else:
-                page_url = f"{base_url}?page={page_num}"
-            
-            # Respect rate limiting for pagination
-            min_delay, max_delay = self.source_configs.get(source, {}).get('pagination_delay', (10, 15))
-            delay = random.uniform(min_delay, max_delay)
-            self.logger.debug(f"Pagination delay: sleeping for {delay:.2f} seconds")
-            time.sleep(delay)
-            
-            # Make request to page
+                if '/inmueble/' not in href and '/venta/' not in href:
+                    continue
+
+            # Normalize: strip query params for dedup
+            clean = href.split('?')[0].rstrip('/')
+            if clean in seen:
+                continue
+            seen.add(clean)
+            urls.append(urljoin(base_url, clean))
+
+        return urls
+
+    def scrape_zaragoza_listings(self, source: str, max_pages: int = None):
+        """Scrape property listings from a source for Zaragoza using pre-filtered URLs."""
+        if max_pages is None:
+            max_pages = SEARCH_SCOPE.get('max_pages', 2)
+
+        self.logger.info(f"Starting filtered scrape: {max_pages} pages from {source}")
+
+        for page_num in range(1, max_pages + 1):
+            page_url = self.build_page_url(source, page_num)
+            if not page_url:
+                break
+
+            self.logger.info(f"[{source}] Page {page_num}: {page_url}")
+
+            # Pagination delay
+            if page_num > 1:
+                min_d, max_d = self.source_configs.get(source, {}).get('pagination_delay', (10, 15))
+                delay = random.uniform(min_d, max_d)
+                self.logger.debug(f"Pagination delay: {delay:.1f}s")
+                time.sleep(delay)
+
             response = self.make_request(page_url, source)
             if not response:
                 self.logger.warning(f"Failed to get page {page_num} from {source}")
                 continue
-            
-            # Parse page to find property links
+
             soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # Find property links (this will vary by site)
-            property_links = []
-            link_selectors = [
-                'a[href*="/inmueble/"]',  # Common pattern
-                'a[href*="/venta/"]',     # Another common pattern
-                '.listing-item a',        # Class-based selector
-                '.property-link',         # Another class-based selector
-            ]
-            
-            for selector in link_selectors:
-                links = soup.select(selector)
-                if links:
-                    property_links = links
-                    break
-            
-            # Extract URLs and scrape each property
-            for link in property_links[:10]:  # Limit to first 10 properties per page
-                href = link.get('href')
-                if href:
-                    # Make absolute URL
-                    property_url = urljoin(response.url, href)
-                    
-                    # Scrape the individual property
-                    property_model = self.scrape_property(property_url, source)
-                    if property_model:
-                        self.save_property(property_model)
-                        
-                        # Small delay between property scrapes
-                        time.sleep(random.uniform(2, 5))
+
+            # Extract property URLs (deduplicated by stripping query params)
+            unique_urls = self._extract_property_urls(soup, source, response.url)
+
+            if not unique_urls:
+                self.logger.warning(f"No property links found on page {page_num} from {source}")
+                continue
+
+            self.logger.info(f"Found {len(unique_urls)} unique property links on page {page_num}")
+
+            for property_url in unique_urls[:15]:
+
+                property_model = self.scrape_property(property_url, source)
+                if property_model:
+                    self.save_property(property_model)
+
+                time.sleep(random.uniform(2, 5))
     
     def close(self):
         """Close the scraper and clean up resources"""
